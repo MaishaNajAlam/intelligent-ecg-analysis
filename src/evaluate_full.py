@@ -23,13 +23,14 @@ from src.datasets import ECGFeatureClassificationDataset, precompute_features
 from src.classifier import ClassifierHead
 
 # Diagnoses grouped by type, used for the "rhythm vs morphology" breakdown
-# mentioned in the project plan. Extend this mapping if you expand beyond
-# the 5 superclasses to the full 71 SCP codes.
+# mentioned in the project plan.
+# Note: With only the 5 PTB-XL superclasses (NORM/MI/STTC/CD/HYP), CD (conduction disturbance)
+# is used as a stand-in proxy for rhythm/conduction. Expand to the full 71 SCP codes for explicit rhythm classes (e.g. AFIB).
 DIAGNOSIS_TYPE = {
     "NORM": "baseline",
     "MI": "morphology",
     "STTC": "morphology",
-    "CD": "rhythm/conduction",
+    "CD": "rhythm/conduction",  # Stand-in proxy for rhythm/conduction under 5 superclasses
     "HYP": "morphology",
 }
 
@@ -44,6 +45,11 @@ def run_classifier_error_analysis():
 
     model = ClassifierHead(in_dim=encoder.feature_dim).to(config.DEVICE)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "classifier_head.pt")
+    if not os.path.exists(ckpt_path):
+        raise FileNotFoundError(
+            f"Classifier checkpoint not found at '{ckpt_path}'. "
+            "Please train the model first using 'python -m src.classifier --train'."
+        )
     model.load_state_dict(torch.load(ckpt_path, map_location=config.DEVICE))
     model.eval()
 
@@ -113,7 +119,7 @@ def run_classifier_error_analysis():
         )
         if len(rhythm_scores) and len(morph_scores):
             summary += (
-                f"Rhythm/conduction diagnoses averaged AUROC={rhythm_scores.mean():.4f}, "
+                f"Rhythm/conduction diagnoses (CD proxy) averaged AUROC={rhythm_scores.mean():.4f}, "
                 f"while morphology-defined diagnoses averaged AUROC={morph_scores.mean():.4f}. "
             )
             if rhythm_scores.mean() > morph_scores.mean():
@@ -121,7 +127,8 @@ def run_classifier_error_analysis():
                     "This matches the pattern described in the project plan: rhythm abnormalities "
                     "tend to be easier to detect from waveform shape alone, while morphology-based "
                     "diagnoses (e.g. infarction, hypertrophy) require finer-grained amplitude/interval "
-                    "cues that a frozen, general-purpose encoder may under-represent.\n\n"
+                    "cues that a frozen, general-purpose encoder may under-represent. "
+                    "(Note: CD serves as a proxy under the 5 superclasses; full 71 SCP codes allow pure rhythm evaluation).\n\n"
                 )
             else:
                 summary += "\n\n"

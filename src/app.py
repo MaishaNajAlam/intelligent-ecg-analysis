@@ -146,4 +146,8 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(share=False)
+    # share=True generates a public gradio.live URL — required on Kaggle/Colab
+    # because those environments block direct localhost access from a browser.
+    # The link is valid for 72 hours. Set share=False when running locally.
+    share = not (os.path.exists("/kaggle/input") or os.path.exists("/content"))
+    demo.launch(share=share)

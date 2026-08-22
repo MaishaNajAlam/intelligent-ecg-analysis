@@ -116,6 +116,7 @@ def train():
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.REPORT_GEN_LR)
 
     best_val_loss = float("inf")
+    os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "report_generator.pt")
 
     for epoch in range(config.REPORT_GEN_EPOCHS):
@@ -151,7 +152,8 @@ def train():
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), ckpt_path)
-            print(f"  -> New best model saved to {ckpt_path}")
+            print(f"  -> New best model saved (val_loss={best_val_loss:.4f}) to {ckpt_path}")
+
 
     print(f"Training done. Best val loss: {best_val_loss:.4f}")
 
@@ -172,6 +174,11 @@ def evaluate_test():
 
     model = ECGReportModel(encoder_dim=encoder.feature_dim).to(config.DEVICE)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "report_generator.pt")
+    if not os.path.exists(ckpt_path):
+        raise FileNotFoundError(
+            f"Report generator checkpoint not found at '{ckpt_path}'. "
+            "Please train the model first using 'python -m src.report_generator --train'."
+        )
     model.load_state_dict(torch.load(ckpt_path, map_location=config.DEVICE))
     model.eval()
 

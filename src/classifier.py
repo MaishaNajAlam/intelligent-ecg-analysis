@@ -57,7 +57,8 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=config.CLASSIFIER_LR)
     criterion = nn.BCEWithLogitsLoss()
 
-    best_auroc = 0.0
+    best_auroc = -1.0
+    os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "classifier_head.pt")
 
     for epoch in range(config.CLASSIFIER_EPOCHS):
@@ -79,7 +80,8 @@ def train():
         if val_auroc > best_auroc:
             best_auroc = val_auroc
             torch.save(model.state_dict(), ckpt_path)
-            print(f"  -> New best model saved to {ckpt_path}")
+            print(f"  -> New best model saved (AUROC={best_auroc:.4f}) to {ckpt_path}")
+
 
     print(f"Training done. Best val macro AUROC: {best_auroc:.4f}")
 
@@ -122,6 +124,11 @@ def evaluate_test():
 
     model = ClassifierHead(in_dim=encoder.feature_dim).to(config.DEVICE)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "classifier_head.pt")
+    if not os.path.exists(ckpt_path):
+        raise FileNotFoundError(
+            f"Classifier checkpoint not found at '{ckpt_path}'. "
+            "Please train the model first using 'python -m src.classifier --train'."
+        )
     model.load_state_dict(torch.load(ckpt_path, map_location=config.DEVICE))
 
     macro_auroc, per_class = evaluate_loader(model, test_loader, per_class=True)

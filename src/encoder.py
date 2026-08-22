@@ -17,8 +17,13 @@ GitHub repo. You need to do TWO things before it loads:
 Expected input format for HuBERT-ECG:
   - Shape: (batch_size, n_leads=12, n_samples)
   - Sampling rate: 500 Hz  (10 s signal → 5000 samples)
-  - Normalization: per-lead z-score  (mean=0, std=1)
+  - Normalization: per-lead z-score (mean=0, std=1) by default, or bandpass + min-max [-1, 1]
+    (configurable in config.py via PREPROCESSING_MODE)
   - The model config says it was pre-trained at 500 Hz.
+
+Note on repository naming:
+  - GitHub Repository URL: https://github.com/Edoar-do/HuBERT-ECG.git (owner: Edoar-do)
+  - Hugging Face Hub Organization: Edoardo-BS (e.g., "Edoardo-BS/hubert-ecg-base")
 
   PTB-XL has both 100Hz and 500Hz versions. config.py sets
   SAMPLING_RATE=500 when using the real encoder so the signal
@@ -90,20 +95,65 @@ class FallbackECGEncoder(nn.Module):
 # Pre-processing helpers (Step 2, To-do item 3)
 # ──────────────────────────────────────────────────────────────────────
 
-def preprocess_signal(signal: np.ndarray) -> np.ndarray:
+def _bandpass_filter(signal: np.ndarray, lowcut: float = 0.5, highcut: float = 50.0, fs: float = 500.0) -> np.ndarray:
+    """Apply Butterworth bandpass filter (0.5 - 50 Hz) across each lead."""
+    try:
+        from scipy.signal import butter, filtfilt
+        nyq = 0.5 * fs
+        low = max(1e-4, lowcut / nyq)
+        high = min(0.9999, highcut / nyq)
+        b, a = butter(N=3, Wn=[low, high], btype="band")
+        filtered = np.zeros_like(signal)
+        for ch in range(signal.shape[1]):
+            filtered[:, ch] = filtfilt(b, a, signal[:, ch])
+        return filtered
+    except Exception:
+        # Fall back gracefully to unfiltered signal if scipy bandpass fails
+        return signal
+
+
+def _minmax_normalize(signal: np.ndarray, feature_range: tuple = (-1, 1)) -> np.ndarray:
+    """Scale signal per-lead to feature_range (default [-1, 1])."""
+    min_val = signal.min(axis=0, keepdims=True)
+    max_val = signal.max(axis=0, keepdims=True)
+    diff = np.where((max_val - min_val) < 1e-8, 1.0, max_val - min_val)
+    norm = (signal - min_val) / diff  # [0, 1]
+    low, high = feature_range
+    return (norm * (high - low) + low).astype(np.float32)
+
+
+def preprocess_signal(signal: np.ndarray, mode: str = None) -> np.ndarray:
     """
-    Apply per-lead z-score normalization as required by HuBERT-ECG.
+    Preprocess raw ECG waveform (T, n_leads) for encoder input.
+
+    Modes supported:
+      - "zscore": Per-lead zero-mean unit-variance (mean=0, std=1). Standard default.
+      - "minmax": Per-lead min-max scaling to [-1, 1].
+      - "bandpass_minmax": 0.5-50Hz Butterworth bandpass filter + [-1, 1] min-max scaling.
+                          Matches community HuBERT-ECG usage notebooks.
 
     Args:
-        signal: (T, n_leads) numpy array — raw output from wfdb.rdsamp()
+        signal: (T, n_leads) numpy array — raw output from wfdb.rdsamp() or load_raw_signal()
+        mode: Preprocessing mode string ("zscore", "minmax", "bandpass_minmax").
+              If None, defaults to config.PREPROCESSING_MODE.
+
     Returns:
-        (T, n_leads) numpy array — normalized, same dtype
+        (T, n_leads) numpy array (float32) — normalized waveform
     """
-    # Per-lead normalization: subtract mean, divide by std
-    mean = signal.mean(axis=0, keepdims=True)   # (1, n_leads)
-    std  = signal.std(axis=0,  keepdims=True)   # (1, n_leads)
-    std  = np.where(std < 1e-8, 1.0, std)       # avoid div-by-zero for flat leads
-    return ((signal - mean) / std).astype(np.float32)
+    if mode is None:
+        mode = getattr(config, "PREPROCESSING_MODE", "zscore")
+
+    if mode == "bandpass_minmax":
+        fs = float(getattr(config, "SAMPLING_RATE", 500))
+        filtered = _bandpass_filter(signal, fs=fs)
+        return _minmax_normalize(filtered, feature_range=(-1, 1))
+    elif mode == "minmax":
+        return _minmax_normalize(signal, feature_range=(-1, 1))
+    else:  # "zscore" default
+        mean = signal.mean(axis=0, keepdims=True)   # (1, n_leads)
+        std  = signal.std(axis=0,  keepdims=True)   # (1, n_leads)
+        std  = np.where(std < 1e-8, 1.0, std)       # avoid div-by-zero for flat leads
+        return ((signal - mean) / std).astype(np.float32)
 
 
 def signal_to_tensor(signal: np.ndarray, device: str) -> torch.Tensor:
@@ -226,7 +276,7 @@ class ECGEncoder:
         Returns:
             (L, d) torch tensor — frozen feature representation
         """
-        signal = preprocess_signal(signal)       # per-lead z-score normalization
+        signal = preprocess_signal(signal)       # configurable preprocessing (see config.PREPROCESSING_MODE)
         x      = signal_to_tensor(signal, self.device)  # (1, n_leads, T)
 
         if self.is_fallback:

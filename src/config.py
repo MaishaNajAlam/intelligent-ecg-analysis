@@ -46,7 +46,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else (
 )
 
 # ---------------------------------------------------------------------
-# Signal params
+# Signal params & Preprocessing
 # ---------------------------------------------------------------------
 SAMPLING_RATE      = 500   # HuBERT-ECG standard sampling rate (500 Hz = 5000 samples per 10s lead)
                            # Note: If fine-tuning on custom 100Hz models, set to 100 and use records100/
@@ -54,10 +54,17 @@ SAMPLING_RATE      = 500   # HuBERT-ECG standard sampling rate (500 Hz = 5000 sa
 SIGNAL_LENGTH_SEC  = 10
 N_LEADS            = 12
 
+# Preprocessing strategy: "zscore" (default per-lead normalization: zero-mean unit-variance),
+# "minmax" (scale to [-1, 1] per lead), or "bandpass_minmax" (0.5-50Hz Butterworth filter + [-1, 1] scaling).
+# Note: "zscore" matches standard practice, while some community notebooks use "bandpass_minmax".
+PREPROCESSING_MODE = "zscore"
+
 # ---------------------------------------------------------------------
 # Encoder — HuBERT-ECG  (Coppola et al., 2024)
 # ---------------------------------------------------------------------
-# Verified Hugging Face Hub IDs (Repo org: Edoardo-BS):
+# GitHub Repo: https://github.com/Edoar-do/HuBERT-ECG.git (owner: Edoar-do)
+# Hugging Face Hub organization name: Edoardo-BS
+# Verified Hugging Face Hub IDs:
 #   small  → "Edoardo-BS/hubert-ecg-small"   feature_dim = 512
 #   base   → "Edoardo-BS/hubert-ecg-base"    feature_dim = 768  ← default
 #   large  → "Edoardo-BS/hubert-ecg-large"   feature_dim = 1024

@@ -16,4 +16,4 @@ huggingface_hub>=0.23.0
 scipy>=1.11.0
 # HuBERT-ECG custom package — registers HuBERTECG with Hugging Face AutoModel
 # Must be installed BEFORE importing transformers in encoder.py
-git+https://github.com/Edoardo-BS/HuBERT-ECG.git
+git+https://github.com/Edoar-do/HuBERT-ECG.git
