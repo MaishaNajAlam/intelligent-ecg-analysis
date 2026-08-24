@@ -280,11 +280,15 @@ class ECGEncoder:
         x      = signal_to_tensor(signal, self.device)  # (1, n_leads, T)
 
         if self.is_fallback:
+            x   = signal_to_tensor(signal, self.device)  # (1, n_leads, T)
             out = self.model(x)                       # (1, L, d)
+            return out.squeeze(0).cpu()               # (L, d)
         else:
-            out = self.model(x).last_hidden_state     # HF models expose this
-
-        return out.squeeze(0).cpu()  # (L, d)
+            # HuBERT expects 2D input (n_leads, T) -> (12, 5000).
+            # HuggingFace HubertModel unsqueezes dim 1 internally -> (12, 1, 5000).
+            x_2d = torch.tensor(signal.T, dtype=torch.float32).to(self.device)  # (n_leads, T)
+            out  = self.model(x_2d).last_hidden_state                          # (n_leads, L, d)
+            return out.mean(dim=0).cpu()                                       # (L, d)
 
     @torch.no_grad()
     def encode_batch(self, signals: np.ndarray) -> torch.Tensor:
@@ -297,13 +301,18 @@ class ECGEncoder:
             (B, L, d) torch tensor
         """
         signals = np.stack([preprocess_signal(s) for s in signals])  # normalize each
-        x       = batch_signals_to_tensor(signals, self.device)       # (B, n_leads, T)
 
         if self.is_fallback:
+            x   = batch_signals_to_tensor(signals, self.device)       # (B, n_leads, T)
             out = self.model(x)
+            return out.cpu()                                          # (B, L, d)
         else:
-            out = self.model(x).last_hidden_state
-        return out.cpu()
+            B, T, n_leads = signals.shape
+            x_tensor = torch.tensor(signals, dtype=torch.float32).permute(0, 2, 1).to(self.device)  # (B, n_leads, T)
+            x_2d     = x_tensor.reshape(B * n_leads, T)                                             # (B * n_leads, T)
+            out      = self.model(x_2d).last_hidden_state                                           # (B * n_leads, L, d)
+            out      = out.reshape(B, n_leads, out.shape[1], out.shape[2])                          # (B, n_leads, L, d)
+            return out.mean(dim=1).cpu()                                                            # (B, L, d)
 
     def confirm_frozen(self) -> bool:
         """Returns True if ALL encoder parameters have requires_grad=False."""
