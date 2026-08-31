@@ -51,6 +51,14 @@ class ECGFeatureClassificationDataset(Dataset):
 class ECGFeatureReportDataset(Dataset):
     """(cached feature sequence, tokenized report) pairs for Step 4."""
 
+    # Keyword heuristic for dropping non-English (German) PTB-XL reports.
+    # No extra language-ID library needed — these are common German ECG-report
+    # words/fragments that essentially never appear in the English reports.
+    _GERMAN_INDICATOR_WORDS = [
+        "sinusrhythmus", "lagetyp", "anhalt", "keine", "normaler",
+        "fuer", "rhythmus", "vorhof", "schenkel", "achse",
+    ]
+
     def __init__(self, df, tokenizer, max_len=config.MAX_REPORT_TOKENS, report_col="report"):
         self.df = df.reset_index() if "ecg_id" not in df.columns else df
         self.tokenizer = tokenizer
@@ -58,6 +66,16 @@ class ECGFeatureReportDataset(Dataset):
         self.report_col = report_col
         # Drop rows with empty/NaN reports — Step 4 needs text targets
         self.df = self.df[self.df[report_col].notna() & (self.df[report_col].str.strip() != "")]
+
+        # Drop rows whose report looks German (case-insensitive keyword match)
+        n_before = len(self.df)
+        german_pattern = "|".join(self._GERMAN_INDICATOR_WORDS)
+        is_german = self.df[report_col].str.contains(german_pattern, case=False, regex=True)
+        self.df = self.df[~is_german]
+        n_after = len(self.df)
+        print(f"Language filter: kept {n_after} English reports, "
+              f"dropped {n_before - n_after} non-English (German) reports.")
+
         self.df = self.df.reset_index(drop=True)
 
     def __len__(self):

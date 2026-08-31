@@ -199,11 +199,18 @@ class ECGEncoder:
         self._load()
 
     def _load(self):
+        # `loaded_real_model` is set True only once the real HuBERT-ECG checkpoint
+        # has actually finished loading. The success message below is printed
+        # AFTER (outside) the try/except on purpose: a print-formatting bug must
+        # never be able to masquerade as a genuine loading failure and trip
+        # FALLBACK_GUARD — only an exception from the loading calls themselves
+        # (import, from_pretrained) should do that.
+        loaded_real_model = False
         try:
             # Step 1 of the loading dance: register HuBERTECG with AutoModel
-            # This import does nothing else — it just registers the class.
+            # This import does nothing else -- it just registers the class.
             try:
-                import hubert_ecg  # noqa: F401  ← registers custom class
+                import hubert_ecg  # noqa: F401  -- registers custom class
                 print("hubert_ecg package imported (custom class registered).")
             except ImportError:
                 print(
@@ -214,7 +221,7 @@ class ECGEncoder:
                 raise  # triggers fallback
 
             from transformers import AutoModel
-            print(f"Loading HuBERT-ECG from '{config.HUBERT_ECG_MODEL_ID}' …")
+            print(f"Loading HuBERT-ECG from '{config.HUBERT_ECG_MODEL_ID}' ...")
             self.model = AutoModel.from_pretrained(
                 config.HUBERT_ECG_MODEL_ID,
                 trust_remote_code=True,
@@ -222,7 +229,7 @@ class ECGEncoder:
             self.feature_dim = getattr(
                 self.model.config, "hidden_size", config.ENCODER_FEATURE_DIM
             )
-            print(f"✔  HuBERT-ECG loaded. Feature dim = {self.feature_dim}")
+            loaded_real_model = True
 
         except Exception as e:
             if not config.USE_FALLBACK_ENCODER_IF_UNAVAILABLE:
@@ -231,9 +238,9 @@ class ECGEncoder:
             if config.FALLBACK_GUARD:
                 raise RuntimeError(
                     "\n"
-                    "══════════════════════════════════════════════════════════\n"
+                    "============================================================\n"
                     "  FALLBACK ENCODER GUARD TRIGGERED\n"
-                    "══════════════════════════════════════════════════════════\n"
+                    "============================================================\n"
                     f"  Could not load HuBERT-ECG: {e}\n\n"
                     "  FALLBACK_GUARD = True in config.py, so we refuse to\n"
                     "  continue with the untrained CNN encoder during training.\n"
@@ -244,18 +251,21 @@ class ECGEncoder:
                     "  2. Make sure you have internet access on Kaggle/Colab.\n"
                     "  3. To test the pipeline shape without the real encoder, set\n"
                     "       FALLBACK_GUARD = False  in src/config.py\n"
-                    "══════════════════════════════════════════════════════════\n"
+                    "============================================================\n"
                 ) from e
 
-            # FALLBACK_GUARD = False → warn loudly but continue
+            # FALLBACK_GUARD = False -> warn loudly but continue
             print("\n" + "=" * 60)
-            print("  ⚠  WARNING: Using UNTRAINED fallback encoder!")
+            print("  [WARNING]  Using UNTRAINED fallback encoder!")
             print(f"  Reason: {e}")
             print("  Results will NOT be meaningful until the real")
             print("  HuBERT-ECG checkpoint is loaded.")
             print("=" * 60 + "\n")
             self.model       = FallbackECGEncoder()
             self.is_fallback = True
+
+        if loaded_real_model:
+            print(f"[OK]  HuBERT-ECG loaded. Feature dim = {self.feature_dim}")
 
         self.model.to(self.device)
         self.model.eval()
@@ -337,7 +347,7 @@ def _test():
     from src.data import load_full_dataset, load_raw_signal
 
     print("\n" + "=" * 60)
-    print("  Step 2 Checkpoint — Encoder Feature Extraction")
+    print("  Step 2 Checkpoint - Encoder Feature Extraction")
     print("=" * 60 + "\n")
 
     # ── 1 & 2: Load encoder, confirm frozen ───────────────────────────
@@ -349,7 +359,7 @@ def _test():
     assert frozen, "FAIL: encoder parameters are not frozen!"
 
     # ── 3 & 4: Preprocess + single forward pass ────────────────────────
-    print("\n  Loading one real ECG from PTB-XL …")
+    print("\n  Loading one real ECG from PTB-XL ...")
     data   = load_full_dataset()
     row    = data["test"].iloc[0]
     signal, meta = load_raw_signal(row)
@@ -361,16 +371,16 @@ def _test():
     print(f"  After normalization: mean={signal_norm.mean():.4f}, std={signal_norm.std():.4f}")
 
     feats = enc.encode(signal)
-    print(f"\n  ✔ Feature tensor shape (L × d): {tuple(feats.shape)}")
+    print(f"\n  [OK] Feature tensor shape (L x d): {tuple(feats.shape)}")
     print(f"     L = {feats.shape[0]} time frames")
     print(f"     d = {feats.shape[1]} feature dimensions")
 
     # ── 5: Batch encoding + save to disk ──────────────────────────────
-    print("\n  Encoding a small batch of 4 ECGs …")
+    print("\n  Encoding a small batch of 4 ECGs ...")
     batch_rows    = [data["test"].iloc[i] for i in range(4)]
     batch_signals = np.stack([load_raw_signal(r)[0] for r in batch_rows])  # (4, T, 12)
     batch_feats   = enc.encode_batch(batch_signals)
-    print(f"  ✔ Batch feature shape (B × L × d): {tuple(batch_feats.shape)}")
+    print(f"  [OK] Batch feature shape (B x L x d): {tuple(batch_feats.shape)}")
 
     # Save the 4 feature arrays to disk for inspection
     save_dir = os.path.join(config.OUTPUT_DIR, "step2_feature_samples")
@@ -378,10 +388,10 @@ def _test():
     for i, row in enumerate(batch_rows):
         np.save(os.path.join(save_dir, f"features_ecg_{row.name}.npy"),
                 batch_feats[i].numpy())
-    print(f"  ✔ Saved {len(batch_rows)} feature files to {save_dir}/")
+    print(f"  [OK] Saved {len(batch_rows)} feature files to {save_dir}/")
 
     print("\n" + "=" * 60)
-    print("  CHECKPOINT PASSED ✔")
+    print("  CHECKPOINT PASSED [OK]")
     print("  A raw ECG went in, a feature tensor of known shape came out.")
     print(f"  Encoder frozen: {frozen}")
     print("=" * 60 + "\n")

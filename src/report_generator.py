@@ -87,6 +87,24 @@ class ECGReportModel(nn.Module):
         return tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
 
 
+def load_report_model(encoder_dim, ckpt_path, map_location=config.DEVICE):
+    """Build an ECGReportModel whose structure matches the saved checkpoint.
+
+    The checkpoint may have been trained with or without LoRA (e.g. a Kaggle run
+    where the peft import failed and training silently fell back to a full BART
+    fine-tune). We inspect the saved keys and construct the model accordingly so
+    load_state_dict lines up exactly.
+    """
+    state = torch.load(ckpt_path, map_location=map_location)
+    ckpt_uses_lora = any(("lora_A" in k or "lora_B" in k) for k in state)
+    model = ECGReportModel(encoder_dim=encoder_dim, use_lora=ckpt_uses_lora)
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if missing or unexpected:
+        print(f"[load_report_model] missing={len(missing)} unexpected={len(unexpected)} "
+              f"(lora checkpoint={ckpt_uses_lora})")
+    return model.to(map_location)
+
+
 def train():
     torch.manual_seed(config.RANDOM_SEED)
     data = load_full_dataset()
@@ -172,14 +190,13 @@ def evaluate_test():
     test_loader = DataLoader(test_ds, batch_size=config.REPORT_GEN_BATCH_SIZE, shuffle=False,
                               collate_fn=collate_report_batch)
 
-    model = ECGReportModel(encoder_dim=encoder.feature_dim).to(config.DEVICE)
     ckpt_path = os.path.join(config.CHECKPOINT_DIR, "report_generator.pt")
     if not os.path.exists(ckpt_path):
         raise FileNotFoundError(
             f"Report generator checkpoint not found at '{ckpt_path}'. "
             "Please train the model first using 'python -m src.report_generator --train'."
         )
-    model.load_state_dict(torch.load(ckpt_path, map_location=config.DEVICE))
+    model = load_report_model(encoder.feature_dim, ckpt_path)
     model.eval()
 
     bleu = hf_evaluate.load("bleu")
@@ -217,10 +234,11 @@ def generate_single(signal, encoder=None, model=None, tokenizer=None):
     if tokenizer is None:
         tokenizer = BartTokenizerFast.from_pretrained(config.BART_MODEL_ID)
     if model is None:
-        model = ECGReportModel(encoder_dim=encoder.feature_dim).to(config.DEVICE)
         ckpt_path = os.path.join(config.CHECKPOINT_DIR, "report_generator.pt")
         if os.path.exists(ckpt_path):
-            model.load_state_dict(torch.load(ckpt_path, map_location=config.DEVICE))
+            model = load_report_model(encoder.feature_dim, ckpt_path)
+        else:
+            model = ECGReportModel(encoder_dim=encoder.feature_dim).to(config.DEVICE)
         model.eval()
 
     feats = encoder.encode(signal).unsqueeze(0).to(config.DEVICE)      # (1, L, d)

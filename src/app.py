@@ -13,6 +13,7 @@ Usage:
 Then open the printed local URL (and/or the public gradio.live link).
 """
 import os
+import re
 import numpy as np
 import gradio as gr
 import matplotlib.pyplot as plt
@@ -22,9 +23,30 @@ from src import config
 from src.data import load_full_dataset, load_raw_signal, plot_12_lead
 from src.encoder import ECGEncoder
 from src.classifier import ClassifierHead, predict_single
-from src.report_generator import ECGReportModel, generate_single
+from src.report_generator import ECGReportModel, generate_single, load_report_model
+from src.datasets import ECGFeatureReportDataset
 
 import torch
+
+# Full names shown alongside the abbreviation in the diagnosis line.
+LABEL_DESCRIPTIONS = {
+    "NORM": "Normal ECG",
+    "MI": "Myocardial Infarction (Heart Attack)",
+    "STTC": "ST/T Change (Ischemia or strain)",
+    "CD": "Conduction Disturbance (e.g. bundle branch block)",
+    "HYP": "Hypertrophy (thickened heart muscle)",
+}
+
+# Reuses the exact keyword list the training-time language filter uses
+# (src/datasets.py) so "is this German?" means the same thing everywhere.
+_GERMAN_PATTERN = re.compile(
+    "|".join(ECGFeatureReportDataset._GERMAN_INDICATOR_WORDS), re.IGNORECASE
+)
+
+
+def _looks_german(text):
+    return bool(_GERMAN_PATTERN.search(text))
+
 
 print("Loading models (this happens once at startup)...")
 _data = load_full_dataset()
@@ -38,13 +60,38 @@ if os.path.exists(_clf_ckpt):
 _classifier.eval()
 
 _tokenizer = BartTokenizerFast.from_pretrained(config.BART_MODEL_ID)
-_report_model = ECGReportModel(encoder_dim=_encoder.feature_dim).to(config.DEVICE)
 _report_ckpt = os.path.join(config.CHECKPOINT_DIR, "report_generator.pt")
 if os.path.exists(_report_ckpt):
-    _report_model.load_state_dict(torch.load(_report_ckpt, map_location=config.DEVICE))
+    _report_model = load_report_model(_encoder.feature_dim, _report_ckpt)
+else:
+    _report_model = ECGReportModel(encoder_dim=_encoder.feature_dim).to(config.DEVICE)
 _report_model.eval()
 
-_record_choices = [str(i) for i in _test_df.index[:200]]  # first 200 test records for the dropdown
+_models_trained = os.path.exists(_clf_ckpt) and os.path.exists(_report_ckpt)
+if not _models_trained:
+    print("\n" + "=" * 60)
+    print("  WARNING: no trained checkpoint(s) found.")
+    print(f"  classifier_head.pt found : {os.path.exists(_clf_ckpt)}")
+    print(f"  report_generator.pt found: {os.path.exists(_report_ckpt)}")
+    print("  Predictions and reports below will be RANDOM/untrained until")
+    print("  you train the models (see README) and re-launch the app.")
+    print("=" * 60 + "\n")
+
+# Curated local demo set (strat_fold==10, English-language ground-truth reports,
+# 3 per superclass except MI: NORM/STTC/CD/HYP) — the only test-set records whose
+# .dat/.hea waveform files are actually present under data/ptbxl/records500/ locally.
+# Avoids requiring the full ~1.7GB PTB-XL download just to run the app; only used
+# for the "Test-set record" dropdown, not for training (training happened on the
+# full dataset on Kaggle). "Upload your own" still works with any ECG regardless.
+# NOTE: MI record 430 was dropped (its .dat download hung/failed and was skipped
+# rather than retried), leaving MI at 2 records instead of 3.
+_record_choices = [
+    "334", "417", "440",   # NORM
+    "765", "947",          # MI
+    "427", "499", "1009",  # STTC
+    "618", "950", "2146",  # CD
+    "1219", "1522", "2119",  # HYP
+]
 
 
 def _plot_to_image(signal, title):
@@ -70,36 +117,41 @@ def analyze_record(ecg_id_str):
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
-    label_str = f"**{top_label}** ({top_conf*100:.1f}% confidence)"
-    conf_table = "\n".join([f"- {k}: {v*100:.1f}%" for k, v in sorted(confidences.items(), key=lambda kv: -kv[1])])
+    top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
+    label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
 
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
-    ground_truth = str(row.get("report", "N/A"))
+    ground_truth_raw = str(row.get("report", "N/A"))
+    ground_truth = (
+        "(Note: original cardiologist report is in German)"
+        if _looks_german(ground_truth_raw)
+        else ground_truth_raw
+    )
 
     side_by_side = (
         f"**Generated report:**\n{generated_report}\n\n"
         f"**Cardiologist ground truth:**\n{ground_truth}"
     )
 
-    return fig, label_str, conf_table, side_by_side
+    return fig, label_str, confidences, side_by_side
 
 
 def analyze_uploaded_csv(file_obj):
     """Optional path: accept a plain CSV of shape (T, 12) for a custom signal."""
     if file_obj is None:
-        return None, "No file uploaded.", "", ""
+        return None, "No file uploaded.", None, ""
     signal = np.loadtxt(file_obj.name, delimiter=",")
     if signal.shape[1] != config.N_LEADS:
-        return None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", "", ""
+        return None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, ""
 
     fig = _plot_to_image(signal, title="Uploaded ECG")
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
-    label_str = f"**{top_label}** ({top_conf*100:.1f}% confidence)"
-    conf_table = "\n".join([f"- {k}: {v*100:.1f}%" for k, v in sorted(confidences.items(), key=lambda kv: -kv[1])])
+    top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
+    label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
-    return fig, label_str, conf_table, f"**Generated report:**\n{generated_report}"
+    return fig, label_str, confidences, f"**Generated report:**\n{generated_report}"
 
 
 with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
@@ -108,6 +160,9 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
         "Signal-to-Report and Signal-to-Diagnosis with Deep Learning.\n\n"
         "Pick a record from the PTB-XL test set, or upload your own 12-lead CSV."
     )
+
+    if not _models_trained:
+        gr.Markdown("⚠️ **Model not trained — predictions are random.**")
 
     with gr.Tab("Test-set record"):
         with gr.Row():
@@ -118,7 +173,7 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
             plot_out = gr.Plot(label="12-lead signal")
             with gr.Column():
                 label_out = gr.Markdown(label="Diagnosis")
-                conf_out = gr.Markdown(label="Confidence (all classes)")
+                conf_out = gr.Label(label="Confidence (all classes)", num_top_classes=5)
         report_out = gr.Markdown(label="Report comparison")
 
         run_btn.click(analyze_record, inputs=dropdown,
@@ -132,7 +187,7 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
             plot_out2 = gr.Plot(label="12-lead signal")
             with gr.Column():
                 label_out2 = gr.Markdown(label="Diagnosis")
-                conf_out2 = gr.Markdown(label="Confidence (all classes)")
+                conf_out2 = gr.Label(label="Confidence (all classes)", num_top_classes=5)
         report_out2 = gr.Markdown(label="Generated report")
 
         upload_btn.click(analyze_uploaded_csv, inputs=file_in,

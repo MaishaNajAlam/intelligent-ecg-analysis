@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Trained model checkpoints (large binaries; report_generator.pt is >500 MB)
+checkpoints/
+
+# Datasets and derived caches
+data/
+outputs/
+
+# Local caches redirected off C:
+piptmp/
+pipcache/
+hfcache/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+
+# Misc build artifacts
+src.zip
