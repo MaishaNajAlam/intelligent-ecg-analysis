@@ -346,8 +346,6 @@ _ICON_REPORT = (
     '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>'
     '<path d="M14 3v4h4"/><path d="M8.5 13.5l1.8 1.8L15 11.5"/></svg>'
 )
-
-
 def _eyebrow(icon_svg, text):
     return f'<div class="ecg-eyebrow">{icon_svg}{text}</div>'
 
