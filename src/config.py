@@ -104,6 +104,18 @@ REPORT_GEN_NUM_BEAMS  = 4    # beam search width; higher = better quality but sl
 USE_LORA            = True   # LoRA fine-tuning (lightweight); False = full fine-tune
 
 # ---------------------------------------------------------------------
+# Brand palette — shared by app.py's Gradio theme and pdf_export.py's PDF
+# styling, so the web app and the exported report look like one product.
+# ---------------------------------------------------------------------
+BRAND_NAVY       = "#12283F"   # primary brand color (header bar, buttons, section labels)
+BRAND_NAVY_MID   = "#1B3A5C"   # hover / secondary accents
+BRAND_ACCENT     = "#8C2F2F"   # muted clinical red (primary-finding highlight, alerts)
+BRAND_PAPER      = "#F7F5F0"   # warm ivory paper tone (cards, PDF page background feel)
+BRAND_INK        = "#22282E"   # body text (softer than pure black)
+BRAND_MUTED      = "#6B7280"   # secondary/muted text
+BRAND_LINE       = "#D8D3C9"   # hairline borders/rules
+
+# ---------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------
 RANDOM_SEED = 42
