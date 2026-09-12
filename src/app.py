@@ -15,6 +15,7 @@ Then open the printed local URL (and/or the public gradio.live link).
 import os
 import re
 import numpy as np
+import pandas as pd
 import gradio as gr
 import matplotlib.pyplot as plt
 from transformers import BartTokenizerFast
@@ -25,6 +26,8 @@ from src.encoder import ECGEncoder
 from src.classifier import ClassifierHead, predict_single
 from src.report_generator import ECGReportModel, generate_single, load_report_model
 from src.datasets import ECGFeatureReportDataset
+from src.saliency import compute_saliency
+from src.pdf_export import build_pdf_report
 
 import torch
 
@@ -94,16 +97,40 @@ _record_choices = [
 ]
 
 
-def _plot_to_image(signal, title):
+def _plot_to_image(signal, title, saliency=None):
+    """12-lead plot. If `saliency` ((T, n_leads) array) is given, overlay a
+    per-lead red heatmap behind each trace showing which parts of the signal
+    most influenced the predicted diagnosis (see src/saliency.py)."""
     lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
     fig, axes = plt.subplots(12, 1, figsize=(9, 11), sharex=True)
+
+    sal_norm = None
+    if saliency is not None:
+        lead_max = saliency.max(axis=0, keepdims=True)
+        lead_max = np.where(lead_max < 1e-12, 1.0, lead_max)
+        sal_norm = saliency / lead_max  # per-lead normalize to [0, 1]
+
     for i, ax in enumerate(axes):
-        ax.plot(signal[:, i], linewidth=0.7, color="#1a1a1a")
+        ax.plot(signal[:, i], linewidth=0.7, color="#1a1a1a", zorder=2)
+        if sal_norm is not None:
+            ymin, ymax = ax.get_ylim()
+            strip = sal_norm[:, i][np.newaxis, :]
+            ax.imshow(strip, aspect="auto", cmap="Reds", alpha=0.5, vmin=0, vmax=1,
+                      extent=[0, signal.shape[0], ymin, ymax], zorder=1)
+            ax.set_ylim(ymin, ymax)  # imshow can shift ylim; pin it back
         ax.set_ylabel(lead_names[i], rotation=0, labelpad=18, fontsize=8)
         ax.set_yticks([])
     axes[-1].set_xlabel("Samples")
     fig.suptitle(title)
-    fig.tight_layout()
+
+    if sal_norm is not None:
+        fig.text(0.5, 0.005,
+                  "Red = regions of the signal that most influenced the predicted diagnosis "
+                  "(gradient-based saliency; darker = higher influence).",
+                  ha="center", fontsize=8, style="italic")
+        fig.tight_layout(rect=[0, 0.02, 1, 1])
+    else:
+        fig.tight_layout()
     return fig
 
 
@@ -112,13 +139,15 @@ def analyze_record(ecg_id_str):
     row = _test_df.loc[ecg_id]
     signal, _ = load_raw_signal(row)
 
-    fig = _plot_to_image(signal, title=f"Record {ecg_id}")
-
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
     top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
     label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
+
+    saliency_result = compute_saliency(signal, encoder=_encoder, classifier=_classifier,
+                                        target_class=top_label)
+    fig = _plot_to_image(signal, title=f"Record {ecg_id}", saliency=saliency_result["saliency"])
 
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
     ground_truth_raw = str(row.get("report", "N/A"))
@@ -133,25 +162,108 @@ def analyze_record(ecg_id_str):
         f"**Cardiologist ground truth:**\n{ground_truth}"
     )
 
-    return fig, label_str, confidences, side_by_side
+    # Cached for the "Export to PDF" button -- regenerated there rather than
+    # reusing `fig` directly, since Gradio may close/consume figures handed
+    # to gr.Plot. Only lightweight, picklable data goes in gr.State.
+    export_data = {
+        "signal": signal,
+        "saliency": saliency_result["saliency"],
+        "title": f"Record {ecg_id}",
+        "label_str": label_str,
+        "confidences": confidences,
+        "report_text": generated_report,
+        "ground_truth": ground_truth,
+    }
+
+    return fig, label_str, confidences, side_by_side, export_data
 
 
 def analyze_uploaded_csv(file_obj):
     """Optional path: accept a plain CSV of shape (T, 12) for a custom signal."""
     if file_obj is None:
-        return None, "No file uploaded.", None, ""
+        return None, "No file uploaded.", None, "", None
     signal = np.loadtxt(file_obj.name, delimiter=",")
     if signal.shape[1] != config.N_LEADS:
-        return None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, ""
+        return None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, "", None
 
-    fig = _plot_to_image(signal, title="Uploaded ECG")
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
     top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
     label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
+
+    saliency_result = compute_saliency(signal, encoder=_encoder, classifier=_classifier,
+                                        target_class=top_label)
+    fig = _plot_to_image(signal, title="Uploaded ECG", saliency=saliency_result["saliency"])
+
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
-    return fig, label_str, confidences, f"**Generated report:**\n{generated_report}"
+    report_str = f"**Generated report:**\n{generated_report}"
+
+    export_data = {
+        "signal": signal,
+        "saliency": saliency_result["saliency"],
+        "title": "Uploaded ECG",
+        "label_str": label_str,
+        "confidences": confidences,
+        "report_text": generated_report,
+        "ground_truth": None,
+    }
+
+    return fig, label_str, confidences, report_str, export_data
+
+
+def export_pdf(export_data):
+    """Rebuilds the plot fresh (cheap -- matplotlib only, no model inference)
+    and lays it out into a downloadable PDF via src/pdf_export.py."""
+    if not export_data:
+        return None
+    fig = _plot_to_image(export_data["signal"], title=export_data["title"],
+                          saliency=export_data["saliency"])
+    path = build_pdf_report(
+        fig, title=export_data["title"], diagnosis_label=export_data["label_str"],
+        confidences=export_data["confidences"], report_text=export_data["report_text"],
+        ground_truth=export_data.get("ground_truth"),
+    )
+    plt.close(fig)
+    return path
+
+
+def analyze_batch(record_ids, files):
+    """Runs the existing single-record pipeline over several records/files at
+    once and returns a summary table. No saliency map here (a heatmap image
+    per row doesn't fit a table) -- see the other two tabs for the per-record
+    visual explanation."""
+    rows = []
+
+    for rid in (record_ids or []):
+        try:
+            row = _test_df.loc[int(rid)]
+            signal, _ = load_raw_signal(row)
+            confidences = predict_single(signal, encoder=_encoder, model=_classifier)
+            top_label = max(confidences, key=confidences.get)
+            report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
+            rows.append({"Source": f"Record {rid}", "Diagnosis": top_label,
+                         "Confidence": f"{confidences[top_label]*100:.1f}%", "Report": report})
+        except Exception as e:
+            rows.append({"Source": f"Record {rid}", "Diagnosis": "ERROR", "Confidence": "", "Report": str(e)})
+
+    for f in (files or []):
+        source = os.path.basename(f.name)
+        try:
+            signal = np.loadtxt(f.name, delimiter=",")
+            if signal.shape[1] != config.N_LEADS:
+                raise ValueError(f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}")
+            confidences = predict_single(signal, encoder=_encoder, model=_classifier)
+            top_label = max(confidences, key=confidences.get)
+            report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
+            rows.append({"Source": source, "Diagnosis": top_label,
+                         "Confidence": f"{confidences[top_label]*100:.1f}%", "Report": report})
+        except Exception as e:
+            rows.append({"Source": source, "Diagnosis": "ERROR", "Confidence": "", "Report": str(e)})
+
+    if not rows:
+        return pd.DataFrame(columns=["Source", "Diagnosis", "Confidence", "Report"])
+    return pd.DataFrame(rows)
 
 
 with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
@@ -175,9 +287,14 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
                 label_out = gr.Markdown(label="Diagnosis")
                 conf_out = gr.Label(label="Confidence (all classes)", num_top_classes=5)
         report_out = gr.Markdown(label="Report comparison")
+        export_state = gr.State()
+        with gr.Row():
+            export_btn = gr.Button("📄 Export to PDF")
+            pdf_out = gr.File(label="Download PDF report")
 
         run_btn.click(analyze_record, inputs=dropdown,
-                       outputs=[plot_out, label_out, conf_out, report_out])
+                       outputs=[plot_out, label_out, conf_out, report_out, export_state])
+        export_btn.click(export_pdf, inputs=export_state, outputs=pdf_out)
 
     with gr.Tab("Upload your own"):
         gr.Markdown("CSV with shape (n_samples, 12), one column per lead, no header row.")
@@ -189,9 +306,30 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
                 label_out2 = gr.Markdown(label="Diagnosis")
                 conf_out2 = gr.Label(label="Confidence (all classes)", num_top_classes=5)
         report_out2 = gr.Markdown(label="Generated report")
+        export_state2 = gr.State()
+        with gr.Row():
+            export_btn2 = gr.Button("📄 Export to PDF")
+            pdf_out2 = gr.File(label="Download PDF report")
 
         upload_btn.click(analyze_uploaded_csv, inputs=file_in,
-                          outputs=[plot_out2, label_out2, conf_out2, report_out2])
+                          outputs=[plot_out2, label_out2, conf_out2, report_out2, export_state2])
+        export_btn2.click(export_pdf, inputs=export_state2, outputs=pdf_out2)
+
+    with gr.Tab("Batch analysis"):
+        gr.Markdown(
+            "Analyze several ECGs at once and get a summary table. "
+            "Pick multiple test-set records and/or upload multiple CSVs, then run."
+        )
+        with gr.Row():
+            batch_dropdown = gr.Dropdown(choices=_record_choices, multiselect=True,
+                                          label="Test-set records (optional)")
+            batch_files = gr.File(label="Upload CSVs (optional)", file_types=[".csv"],
+                                   file_count="multiple")
+        batch_btn = gr.Button("Run batch analysis", variant="primary")
+        batch_out = gr.Dataframe(headers=["Source", "Diagnosis", "Confidence", "Report"],
+                                  label="Batch results", wrap=True)
+
+        batch_btn.click(analyze_batch, inputs=[batch_dropdown, batch_files], outputs=batch_out)
 
     gr.Markdown(
         "---\n"
