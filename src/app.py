@@ -162,8 +162,6 @@ _ICON_REPORT = (
     '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>'
     '<path d="M14 3v4h4"/><path d="M8.5 13.5l1.8 1.8L15 11.5"/></svg>'
 )
-
-
 def _eyebrow(icon_svg, text):
     return f'<div class="ecg-eyebrow">{icon_svg}{text}</div>'
 
@@ -343,9 +341,11 @@ def analyze_uploaded_csv(file_obj):
 def export_pdf(export_data):
     """Rebuilds the plot fresh (cheap -- matplotlib only, no model inference)
     and lays it out into a PDF via src/pdf_export.py, then rasterizes page 1
-    so the user can preview it before downloading the actual file."""
+    so the user can preview it before downloading the actual file. The
+    preview/download components start hidden (see the Blocks layout) and are
+    only revealed once there's something real to show."""
     if not export_data:
-        return None, None
+        return gr.update(visible=False), gr.update(visible=False)
     fig = _plot_to_image(export_data["signal"], title=export_data["title"],
                           saliency=export_data["saliency"])
     path = build_pdf_report(
@@ -355,7 +355,7 @@ def export_pdf(export_data):
     )
     plt.close(fig)
     preview_path = render_preview_image(path)
-    return preview_path, path
+    return gr.update(value=preview_path, visible=True), gr.update(value=path, visible=True)
 
 
 def analyze_batch(record_ids, files):
@@ -442,10 +442,10 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
                 truth_report_out = gr.Textbox(label="🩺 Cardiologist Ground Truth", lines=6, interactive=False)
 
         export_state = gr.State()
-        export_btn = gr.Button("📄 Export to PDF")
+        export_btn = gr.Button("📄 Export to PDF", variant="primary")
         with gr.Row():
-            pdf_preview = gr.Image(label="PDF Preview", scale=3, height=420)
-            pdf_out = gr.File(label="Download PDF report", scale=1)
+            pdf_preview = gr.Image(label="PDF Preview", scale=3, height=300, visible=False)
+            pdf_out = gr.File(label="Download PDF report", scale=1, visible=False)
 
         run_btn.click(analyze_record, inputs=dropdown,
                        outputs=[plot_out, label_out, conf_out, gen_report_out, truth_report_out, export_state])
@@ -470,10 +470,10 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
             gen_report_out2 = gr.Textbox(label="🤖 AI-Generated Report", lines=6, interactive=False)
 
         export_state2 = gr.State()
-        export_btn2 = gr.Button("📄 Export to PDF")
+        export_btn2 = gr.Button("📄 Export to PDF", variant="primary")
         with gr.Row():
-            pdf_preview2 = gr.Image(label="PDF Preview", scale=3, height=420)
-            pdf_out2 = gr.File(label="Download PDF report", scale=1)
+            pdf_preview2 = gr.Image(label="PDF Preview", scale=3, height=300, visible=False)
+            pdf_out2 = gr.File(label="Download PDF report", scale=1, visible=False)
 
         upload_btn.click(analyze_uploaded_csv, inputs=file_in,
                           outputs=[plot_out2, label_out2, conf_out2, gen_report_out2, export_state2])
