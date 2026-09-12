@@ -134,6 +134,113 @@ _CUSTOM_CSS = f"""
     font-size: 1.02rem; font-weight: 600; margin: 0 0 6px 0;
 }}
 .ecg-feature-card p {{ color: {_SAGE_MUTED}; font-size: 0.85rem; line-height: 1.45; margin: 0; }}
+
+.ecg-pdf-drawer {{
+    max-height: 0px !important;
+    opacity: 0 !important;
+    transform: translateY(-14px) scale(0.98);
+    overflow: hidden !important;
+    transition: max-height 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                margin 0.35s ease !important;
+    pointer-events: none;
+    margin-top: 0px !important;
+}}
+
+.ecg-pdf-drawer.is-open {{
+    max-height: 8000px !important;
+    opacity: 1 !important;
+    transform: translateY(0px) scale(1) !important;
+    pointer-events: auto !important;
+    margin-top: 14px !important;
+}}
+
+/* Ensure PDF preview image container displays cleanly aligned at top */
+.ecg-pdf-drawer .image-frame {{
+    align-items: flex-start !important;
+    justify-content: center !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: transparent !important;
+}}
+
+.ecg-pdf-drawer .image-container {{
+    height: auto !important;
+    min-height: 0 !important;
+    background: transparent !important;
+}}
+
+.ecg-pdf-drawer .image-container > button {{
+    display: block !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    cursor: default !important;
+    width: 100% !important;
+    height: auto !important;
+}}
+
+.ecg-pdf-drawer .block {{
+    height: auto !important;
+    min-height: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+
+.ecg-pdf-drawer img {{
+    object-position: top center !important;
+    vertical-align: top !important;
+    width: 100% !important;
+    max-width: 880px !important;
+    margin: 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1) !important;
+    border-radius: 8px !important;
+}}
+
+/* Hide floating toolbar action buttons (download, share icons) on images/plots */
+button.icon-button,
+.image-container button.icon-button,
+.image-frame button.icon-button,
+.image-preview button.icon-button,
+.floating-button,
+button.download,
+button.share,
+button[aria-label="Download"],
+button[aria-label="Download image"],
+button[aria-label="Share"],
+button[aria-label="Share image"],
+button[title="Download"],
+button[title="Download image"],
+button[title="Share"],
+button[title="Share image"] {{
+    display: none !important;
+}}
+
+/* Ensure Download PDF button stays strictly in one line without wrapping */
+.ecg-pdf-download-btn {{
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    min-width: 140px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 8px 20px !important;
+    font-weight: 600 !important;
+}}
+
+.ecg-pdf-bar {{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    gap: 16px !important;
+    margin-bottom: 8px !important;
+}}
 """
 
 # Small stroke-style line icons (no photos/animation), matching the
@@ -264,6 +371,49 @@ def _extract_patient_meta(row):
     return {field: row.get(field) for field in _PATIENT_META_FIELDS}
 
 
+def toggle_pdf_preview(export_data, is_open):
+    """Toggles the PDF preview and download drawer instantaneously with a smooth CSS transition."""
+    if not is_open:
+        if not export_data:
+            return (
+                gr.update(elem_classes=["ecg-pdf-drawer"]),
+                gr.update(),
+                gr.update(),
+                gr.update(value="📄 Preview PDF"),
+                False,
+            )
+        pdf_path = export_data.get("pdf_path")
+        preview_path = export_data.get("preview_path")
+        if not pdf_path or not os.path.exists(pdf_path):
+            fig = _plot_to_image(export_data["signal"], title=export_data["title"],
+                                  saliency=export_data.get("saliency"))
+            pdf_path = build_pdf_report(
+                fig, title=export_data["title"], diagnosis_label=export_data["label_str"],
+                confidences=export_data["confidences"], report_text=export_data["report_text"],
+                ground_truth=None, patient_meta=export_data.get("patient_meta"),
+            )
+            plt.close(fig)
+            preview_path = render_preview_image(pdf_path)
+            export_data["pdf_path"] = pdf_path
+            export_data["preview_path"] = preview_path
+
+        return (
+            gr.update(elem_classes=["ecg-pdf-drawer", "is-open"]),
+            gr.update(value=preview_path),
+            gr.update(value=pdf_path),
+            gr.update(value="✖ Hide PDF Preview"),
+            True,
+        )
+    else:
+        return (
+            gr.update(elem_classes=["ecg-pdf-drawer"]),
+            gr.update(),
+            gr.update(),
+            gr.update(value="📄 Preview PDF"),
+            False,
+        )
+
+
 def analyze_record(ecg_id_str):
     ecg_id = int(ecg_id_str)
     row = _test_df.loc[ecg_id]
@@ -281,16 +431,16 @@ def analyze_record(ecg_id_str):
     fig = _plot_to_image(signal, title=f"Record {ecg_id}", saliency=saliency_result["saliency"])
 
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
-    ground_truth_raw = str(row.get("report", "N/A"))
-    ground_truth = (
-        "(Note: original cardiologist report is in German)"
-        if _looks_german(ground_truth_raw)
-        else ground_truth_raw
-    )
 
-    # Cached for the "Export to PDF" button -- regenerated there rather than
-    # reusing `fig` directly, since Gradio may close/consume figures handed
-    # to gr.Plot. Only lightweight, picklable data goes in gr.State.
+    # Pre-generate PDF & preview during analysis so toggle button opens instantaneously
+    patient_meta = _extract_patient_meta(row)
+    pdf_path = build_pdf_report(
+        fig, title=f"Record {ecg_id}", diagnosis_label=label_str,
+        confidences=confidences, report_text=generated_report,
+        ground_truth=None, patient_meta=patient_meta,
+    )
+    preview_path = render_preview_image(pdf_path)
+
     export_data = {
         "signal": signal,
         "saliency": saliency_result["saliency"],
@@ -298,20 +448,30 @@ def analyze_record(ecg_id_str):
         "label_str": label_str,
         "confidences": confidences,
         "report_text": generated_report,
-        "ground_truth": ground_truth,
-        "patient_meta": _extract_patient_meta(row),
+        "patient_meta": patient_meta,
+        "pdf_path": pdf_path,
+        "preview_path": preview_path,
     }
 
-    return fig, diagnosis_md, confidences, generated_report, ground_truth, export_data
+    return (
+        fig, diagnosis_md, confidences, generated_report,
+        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+    )
 
 
 def analyze_uploaded_csv(file_obj):
     """Optional path: accept a plain CSV of shape (T, 12) for a custom signal."""
     if file_obj is None:
-        return None, "No file uploaded.", None, "", None
+        return (
+            None, "No file uploaded.", None, "",
+            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+        )
     signal = np.loadtxt(file_obj.name, delimiter=",")
     if signal.shape[1] != config.N_LEADS:
-        return None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, "", None
+        return (
+            None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, "",
+            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+        )
 
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
@@ -326,6 +486,13 @@ def analyze_uploaded_csv(file_obj):
 
     generated_report = generate_single(signal, encoder=_encoder, model=_report_model, tokenizer=_tokenizer)
 
+    pdf_path = build_pdf_report(
+        fig, title="Uploaded ECG", diagnosis_label=label_str,
+        confidences=confidences, report_text=generated_report,
+        ground_truth=None, patient_meta=None,
+    )
+    preview_path = render_preview_image(pdf_path)
+
     export_data = {
         "signal": signal,
         "saliency": saliency_result["saliency"],
@@ -333,29 +500,15 @@ def analyze_uploaded_csv(file_obj):
         "label_str": label_str,
         "confidences": confidences,
         "report_text": generated_report,
-        "ground_truth": None,
-        "patient_meta": None,  # no accompanying patient record for an uploaded signal
+        "patient_meta": None,
+        "pdf_path": pdf_path,
+        "preview_path": preview_path,
     }
 
-    return fig, diagnosis_md, confidences, generated_report, export_data
-
-
-def export_pdf(export_data):
-    """Rebuilds the plot fresh (cheap -- matplotlib only, no model inference)
-    and lays it out into a PDF via src/pdf_export.py, then rasterizes page 1
-    so the user can preview it before downloading the actual file."""
-    if not export_data:
-        return None, None
-    fig = _plot_to_image(export_data["signal"], title=export_data["title"],
-                          saliency=export_data["saliency"])
-    path = build_pdf_report(
-        fig, title=export_data["title"], diagnosis_label=export_data["label_str"],
-        confidences=export_data["confidences"], report_text=export_data["report_text"],
-        ground_truth=export_data.get("ground_truth"), patient_meta=export_data.get("patient_meta"),
+    return (
+        fig, diagnosis_md, confidences, generated_report,
+        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
     )
-    plt.close(fig)
-    preview_path = render_preview_image(path)
-    return preview_path, path
 
 
 def analyze_batch(record_ids, files):
@@ -400,7 +553,7 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
     gr.HTML(_eyebrow(_ICON_HEART, "AI-Powered Cardiac Analysis"))
     gr.HTML(
         '<div class="ecg-h1">Intelligent ECG Analysis</div>'
-        '<p class="ecg-sub">Signal-to-report and signal-to-diagnosis with deep learning — '
+        '<p class="ecg-sub">Signal-to-report and signal-to-diagnosis with deep learning,'
         'built for clinicians who need to see the reasoning, not just the result.</p>'
     )
 
@@ -437,19 +590,30 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
 
         gr.HTML(_eyebrow(_ICON_REPORT, "Clinical Report"))
         with gr.Group():
-            with gr.Row():
-                gen_report_out = gr.Textbox(label="🤖 AI-Generated Report", lines=6, interactive=False)
-                truth_report_out = gr.Textbox(label="🩺 Cardiologist Ground Truth", lines=6, interactive=False)
+            gen_report_out = gr.Textbox(label="AI-Generated Report", lines=6, interactive=False)
+
+        gr.HTML(_eyebrow(_ICON_REPORT, "Clinical PDF Report"))
+        with gr.Group():
+            preview_btn = gr.Button("📄 Preview PDF", variant="primary")
+            with gr.Column(elem_classes=["ecg-pdf-drawer"]) as pdf_drawer:
+                with gr.Row(equal_height=True, elem_classes=["ecg-pdf-bar"]):
+                    gr.Markdown("📄 **Diagnostic PDF Report** — Complete document with 12-lead waveforms & clinical summary.", scale=4)
+                    download_btn = gr.DownloadButton("Download PDF", variant="primary", scale=1, min_width=140, elem_classes=["ecg-pdf-download-btn"])
+                pdf_preview = gr.Image(label="PDF Report Preview", interactive=False, show_label=False)
 
         export_state = gr.State()
-        export_btn = gr.Button("📄 Export to PDF")
-        with gr.Row():
-            pdf_preview = gr.Image(label="PDF Preview", scale=3, height=420)
-            pdf_out = gr.File(label="Download PDF report", scale=1)
+        pdf_open_state = gr.State(value=False)
 
-        run_btn.click(analyze_record, inputs=dropdown,
-                       outputs=[plot_out, label_out, conf_out, gen_report_out, truth_report_out, export_state])
-        export_btn.click(export_pdf, inputs=export_state, outputs=[pdf_preview, pdf_out])
+        run_btn.click(
+            analyze_record,
+            inputs=dropdown,
+            outputs=[plot_out, label_out, conf_out, gen_report_out, export_state, pdf_drawer, preview_btn, pdf_open_state]
+        )
+        preview_btn.click(
+            toggle_pdf_preview,
+            inputs=[export_state, pdf_open_state],
+            outputs=[pdf_drawer, pdf_preview, download_btn, preview_btn, pdf_open_state]
+        )
 
     with gr.Tab("Upload your own"):
         gr.Markdown("CSV with shape (n_samples, 12), one column per lead, no header row.")
@@ -467,17 +631,30 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
 
         gr.HTML(_eyebrow(_ICON_REPORT, "Clinical Report"))
         with gr.Group():
-            gen_report_out2 = gr.Textbox(label="🤖 AI-Generated Report", lines=6, interactive=False)
+            gen_report_out2 = gr.Textbox(label="AI-Generated Report", lines=6, interactive=False)
+
+        gr.HTML(_eyebrow(_ICON_REPORT, "Clinical PDF Report"))
+        with gr.Group():
+            preview_btn2 = gr.Button("📄 Preview PDF", variant="primary")
+            with gr.Column(elem_classes=["ecg-pdf-drawer"]) as pdf_drawer2:
+                with gr.Row(equal_height=True, elem_classes=["ecg-pdf-bar"]):
+                    gr.Markdown("📄 **Diagnostic PDF Report** — Complete document with 12-lead waveforms & clinical summary.", scale=4)
+                    download_btn2 = gr.DownloadButton("Download PDF", variant="primary", scale=1, min_width=140, elem_classes=["ecg-pdf-download-btn"])
+                pdf_preview2 = gr.Image(label="PDF Report Preview", interactive=False, show_label=False)
 
         export_state2 = gr.State()
-        export_btn2 = gr.Button("📄 Export to PDF")
-        with gr.Row():
-            pdf_preview2 = gr.Image(label="PDF Preview", scale=3, height=420)
-            pdf_out2 = gr.File(label="Download PDF report", scale=1)
+        pdf_open_state2 = gr.State(value=False)
 
-        upload_btn.click(analyze_uploaded_csv, inputs=file_in,
-                          outputs=[plot_out2, label_out2, conf_out2, gen_report_out2, export_state2])
-        export_btn2.click(export_pdf, inputs=export_state2, outputs=[pdf_preview2, pdf_out2])
+        upload_btn.click(
+            analyze_uploaded_csv,
+            inputs=file_in,
+            outputs=[plot_out2, label_out2, conf_out2, gen_report_out2, export_state2, pdf_drawer2, preview_btn2, pdf_open_state2]
+        )
+        preview_btn2.click(
+            toggle_pdf_preview,
+            inputs=[export_state2, pdf_open_state2],
+            outputs=[pdf_drawer2, pdf_preview2, download_btn2, preview_btn2, pdf_open_state2]
+        )
 
     with gr.Tab("Batch analysis"):
         gr.Markdown(

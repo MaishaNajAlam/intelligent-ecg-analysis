@@ -22,7 +22,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
-    HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 from src import config
@@ -262,7 +262,7 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
     story.append(Spacer(1, 4))
     story.append(Paragraph(
         "<b>Status:</b> Unconfirmed — Pending Physician Review", _STYLE_DISCLAIMER))
-    story.append(_hr(space_after=10))
+    story.append(_hr(space_after=8))
 
     # ── Patient & recording information (omitted if no metadata supplied) ──
     story += _patient_recording_table(patient_meta)
@@ -279,8 +279,8 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
         ("BOX", (0, 0), (-1, -1), 1.2, ACCENT),
         ("LEFTPADDING", (0, 0), (-1, -1), 14),
         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-        ("TOPPADDING", (0, 0), (0, 0), 10),
-        ("BOTTOMPADDING", (-1, -1), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (0, 0), 8),
+        ("BOTTOMPADDING", (-1, -1), (-1, -1), 8),
         ("TOPPADDING", (0, 1), (0, -1), 2),
         ("BOTTOMPADDING", (0, 1), (0, -2), 2),
     ]))
@@ -297,14 +297,14 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
     row_styles = [
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("LINEBELOW", (0, 0), (-1, 0), 0.75, NAVY),
         ("LINEBELOW", (0, 1), (-1, -1), 0.4, LINE),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
     ]
     for i in range(1, len(rows)):
@@ -313,11 +313,6 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
     conf_table.setStyle(TableStyle(row_styles))
     story.append(conf_table)
 
-    # ── 12-lead tracing ──
-    story += _section_label("12-Lead ECG Tracing")
-    img_width = 6.7 * inch
-    story.append(Image(img_buf, width=img_width, height=img_width * (fig_h / fig_w)))
-
     # ── Generated clinical impression ──
     story += _section_label("Clinical Impression (AI-Generated)")
     impression_box = Table([[Paragraph(report_text.replace("\n", "<br/>"), _STYLE_BODY)]],
@@ -325,20 +320,12 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
     impression_box.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.75, LINE),
         ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(impression_box)
 
-    if ground_truth:
-        story += _section_label("Reference — Cardiologist Ground Truth")
-        story.append(Paragraph(
-            "For evaluation purposes only; not used by the model to produce the impression above.",
-            _STYLE_MUTED))
-        story.append(Spacer(1, 3))
-        story.append(Paragraph(ground_truth.replace("\n", "<br/>"), _STYLE_BODY))
-
     # ── Disclaimer box ──
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
     disclaimer_cell = Table(
         [[Paragraph("IMPORTANT", _STYLE_DISCLAIMER)],
          [Paragraph(
@@ -352,37 +339,69 @@ def build_pdf_report(fig, title: str, diagnosis_label: str, confidences: dict,
         ("BACKGROUND", (0, 0), (-1, -1), PAPER),
         ("LINEBEFORE", (0, 0), (0, -1), 3, ACCENT),
         ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(disclaimer_cell)
 
     # ── Signature block ──
-    story.append(Spacer(1, 22))
+    story.append(Spacer(1, 14))
     sig_table = Table(
         [["Physician Signature: " + "_" * 32, "Date: " + "_" * 16]],
         colWidths=[4.4 * inch, 2.3 * inch],
     )
     sig_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 9.5),
         ("TEXTCOLOR", (0, 0), (-1, -1), INK), ("LEFTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(sig_table)
+
+    # ── Page 2: Dedicated Full 12-Lead ECG Tracing ──
+    story.append(PageBreak())
+    story += _section_label("12-Lead ECG Tracing & Saliency Waveform Analysis")
+    story.append(Paragraph(
+        "Standard 10-second 12-lead electrocardiogram (500 Hz). "
+        "Red highlighted regions indicate saliency areas influencing the AI classification.",
+        _STYLE_MUTED))
+    story.append(Spacer(1, 6))
+    img_width = 6.8 * inch
+    img_height = min(8.0 * inch, img_width * (fig_h / fig_w))
+    story.append(Image(img_buf, width=img_width, height=img_height))
 
     doc.build(story, onFirstPage=_draw_page_frame, onLaterPages=_draw_page_frame)
     return out_path
 
 
-def render_preview_image(pdf_path: str, page: int = 0, dpi: int = 140) -> str:
-    """Rasterizes one page of an already-built PDF to a PNG, so app.py can show
-    an inline preview before the user downloads the file. Written next to the
-    PDF; does not touch build_pdf_report's own output."""
+def render_preview_image(pdf_path: str, dpi: int = 140) -> str:
+    """Rasterizes all pages of the built PDF into a continuous high-res PNG preview
+    so the user sees the entire clinical document and waveform tracings."""
     import pymupdf
+    from PIL import Image as PILImage
 
     doc = pymupdf.open(pdf_path)
-    pix = doc.load_page(page).get_pixmap(matrix=pymupdf.Matrix(dpi / 72.0, dpi / 72.0))
-    png_path = os.path.splitext(pdf_path)[0] + "_preview.png"
-    pix.save(png_path)
+    page_images = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=dpi)
+        img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        page_images.append(img)
     doc.close()
+
+    if not page_images:
+        return ""
+
+    if len(page_images) == 1:
+        combined = page_images[0]
+    else:
+        pad = 20
+        total_w = max(img.width for img in page_images)
+        total_h = sum(img.height for img in page_images) + pad * (len(page_images) - 1)
+        combined = PILImage.new("RGB", (total_w, total_h), color=(228, 233, 228))
+        y = 0
+        for img in page_images:
+            combined.paste(img, ((total_w - img.width) // 2, y))
+            y += img.height + pad
+
+    png_path = os.path.splitext(pdf_path)[0] + "_preview.png"
+    combined.save(png_path)
     return png_path
 
 
