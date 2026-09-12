@@ -104,36 +104,113 @@ _THEME = gr.themes.Soft(
 # font-family declaration) so the rest of the UI keeps its normal sans font
 # even if the Google Font fails to load offline -- Georgia/serif fallback.
 _CUSTOM_CSS = f"""
-@import url('https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Lora:wght@500;600;700&display=swap');
+
+body, .gradio-container {{ font-family: 'Inter', system-ui, sans-serif !important; }}
 
 .primary {{ border-radius: 999px !important; font-weight: 600 !important; }}
 
+/* ── Hero brand block ── */
+.ecg-hero {{
+    padding: 36px 0 28px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+}}
+
+.ecg-badge {{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: {_LINE};
+    color: {_SAGE_MUTED};
+    border-radius: 999px;
+    padding: 5px 14px 5px 10px;
+    font-size: 0.73rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+}}
+.ecg-badge svg {{ width: 14px; height: 14px; flex-shrink: 0; }}
+
+.ecg-wordmark {{
+    font-family: 'Lora', Georgia, serif;
+    font-size: 3.4rem;
+    font-weight: 700;
+    line-height: 1.15;
+    padding-bottom: 0.1em;
+    margin: 0 0 5px 0;
+    background: linear-gradient(120deg, {_FOREST} 0%, #2E6645 60%, {_SAGE_MUTED} 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.02em;
+}}
+
+.ecg-tagline {{
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 400;
+    color: {_SAGE_MUTED};
+    margin: 0 0 6px 0;
+    line-height: 1.55;
+    max-width: 580px;
+}}
+
+.ecg-tagline strong {{
+    color: {_FOREST};
+    font-weight: 600;
+}}
+
+.ecg-tagline-sub {{
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.88rem;
+    font-weight: 400;
+    color: {_SAGE_MUTED};
+    margin: 0 0 22px 0;
+    line-height: 1.5;
+    max-width: 500px;
+    opacity: 0.8;
+}}
+
+
+.ecg-divider {{
+    width: 100%;
+    height: 1px;
+    background: {_LINE};
+    margin: 4px 0 26px 0;
+}}
+
+/* ── Section eyebrow labels ── */
 .ecg-eyebrow {{
     display: flex; align-items: center; gap: 8px;
-    color: {_SAGE_MUTED}; font-size: 0.78rem; letter-spacing: 0.12em;
-    text-transform: uppercase; font-weight: 600; margin: 4px 0;
+    color: {_SAGE_MUTED}; font-size: 0.73rem; letter-spacing: 0.13em;
+    text-transform: uppercase; font-weight: 600; margin: 18px 0 6px 0;
 }}
-.ecg-eyebrow svg {{ width: 16px; height: 16px; flex-shrink: 0; }}
+.ecg-eyebrow svg {{ width: 15px; height: 15px; flex-shrink: 0; }}
 
-.ecg-h1 {{
-    font-family: 'Lora', Georgia, serif; color: {_FOREST};
-    font-size: 2.1rem; font-weight: 600; margin: 0 0 6px 0; line-height: 1.15;
-}}
-.ecg-sub {{ color: {_SAGE_MUTED}; font-size: 0.95rem; margin: 0 0 18px 0; }}
-
+/* ── Feature capability cards ── */
 .ecg-features {{
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 18px; margin: 4px 0 22px 0;
+    gap: 16px; margin: 0 0 8px 0;
 }}
 .ecg-feature-card {{
-    background: {_CREAM}; border: 1px solid {_LINE}; border-radius: 18px; padding: 20px;
+    background: {_CREAM}; border: 1px solid {_LINE}; border-radius: 16px;
+    padding: 22px 20px 20px 20px;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
 }}
-.ecg-feature-card svg {{ width: 34px; height: 34px; color: {_SAGE_MUTED}; margin-bottom: 12px; }}
+.ecg-feature-card:hover {{
+    box-shadow: 0 6px 24px rgba(22, 36, 28, 0.10);
+    transform: translateY(-2px);
+}}
+.ecg-feature-card svg {{ width: 30px; height: 30px; color: #2E6645; margin-bottom: 14px; }}
 .ecg-feature-card h3 {{
     font-family: 'Lora', Georgia, serif; color: {_FOREST};
-    font-size: 1.02rem; font-weight: 600; margin: 0 0 6px 0;
+    font-size: 0.98rem; font-weight: 600; margin: 0 0 7px 0;
 }}
-.ecg-feature-card p {{ color: {_SAGE_MUTED}; font-size: 0.85rem; line-height: 1.45; margin: 0; }}
+.ecg-feature-card p {{ color: {_SAGE_MUTED}; font-size: 0.83rem; line-height: 1.5; margin: 0; }}
 
 .ecg-pdf-drawer {{
     max-height: 0px !important;
@@ -379,7 +456,7 @@ def toggle_pdf_preview(export_data, is_open):
                 gr.update(elem_classes=["ecg-pdf-drawer"]),
                 gr.update(),
                 gr.update(),
-                gr.update(value="📄 Preview PDF"),
+                gr.update(value="Preview PDF"),
                 False,
             )
         pdf_path = export_data.get("pdf_path")
@@ -401,7 +478,7 @@ def toggle_pdf_preview(export_data, is_open):
             gr.update(elem_classes=["ecg-pdf-drawer", "is-open"]),
             gr.update(value=preview_path),
             gr.update(value=pdf_path),
-            gr.update(value="✖ Hide PDF Preview"),
+            gr.update(value="Hide PDF Preview"),
             True,
         )
     else:
@@ -409,7 +486,7 @@ def toggle_pdf_preview(export_data, is_open):
             gr.update(elem_classes=["ecg-pdf-drawer"]),
             gr.update(),
             gr.update(),
-            gr.update(value="📄 Preview PDF"),
+            gr.update(value="Preview PDF"),
             False,
         )
 
@@ -423,8 +500,8 @@ def analyze_record(ecg_id_str):
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
     top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
-    label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
-    diagnosis_md = f"### {top_label} — {top_desc}\n**Confidence:** {top_conf*100:.1f}%"
+    label_str = f"**{top_label}**: {top_desc} ({top_conf*100:.1f}% confidence)"
+    diagnosis_md = f"### {top_label}: {top_desc}\n**Confidence:** {top_conf*100:.1f}%"
 
     saliency_result = compute_saliency(signal, encoder=_encoder, classifier=_classifier,
                                         target_class=top_label)
@@ -455,7 +532,7 @@ def analyze_record(ecg_id_str):
 
     return (
         fig, diagnosis_md, confidences, generated_report,
-        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="Preview PDF"), False
     )
 
 
@@ -464,21 +541,21 @@ def analyze_uploaded_csv(file_obj):
     if file_obj is None:
         return (
             None, "No file uploaded.", None, "",
-            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="Preview PDF"), False
         )
     signal = np.loadtxt(file_obj.name, delimiter=",")
     if signal.shape[1] != config.N_LEADS:
         return (
             None, f"Expected {config.N_LEADS} columns (leads), got {signal.shape[1]}.", None, "",
-            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+            None, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="Preview PDF"), False
         )
 
     confidences = predict_single(signal, encoder=_encoder, model=_classifier)
     top_label = max(confidences, key=confidences.get)
     top_conf = confidences[top_label]
     top_desc = LABEL_DESCRIPTIONS.get(top_label, "")
-    label_str = f"**{top_label}** — {top_desc} ({top_conf*100:.1f}% confidence)"
-    diagnosis_md = f"### {top_label} — {top_desc}\n**Confidence:** {top_conf*100:.1f}%"
+    label_str = f"**{top_label}**: {top_desc} ({top_conf*100:.1f}% confidence)"
+    diagnosis_md = f"### {top_label}: {top_desc}\n**Confidence:** {top_conf*100:.1f}%"
 
     saliency_result = compute_saliency(signal, encoder=_encoder, classifier=_classifier,
                                         target_class=top_label)
@@ -507,7 +584,7 @@ def analyze_uploaded_csv(file_obj):
 
     return (
         fig, diagnosis_md, confidences, generated_report,
-        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="📄 Preview PDF"), False
+        export_data, gr.update(elem_classes=["ecg-pdf-drawer"]), gr.update(value="Preview PDF"), False
     )
 
 
@@ -549,55 +626,56 @@ def analyze_batch(record_ids, files):
     return pd.DataFrame(rows)
 
 
-with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
-    gr.HTML(_eyebrow(_ICON_HEART, "AI-Powered Cardiac Analysis"))
+with gr.Blocks(title="CardioSage - AI-Powered ECG Analysis & Clinical Reporting") as demo:
     gr.HTML(
-        '<div class="ecg-h1">Intelligent ECG Analysis</div>'
-        '<p class="ecg-sub">Signal-to-report and signal-to-diagnosis with deep learning,'
-        'built for clinicians who need to see the reasoning, not just the result.</p>'
-    )
-
-    gr.HTML(
+        '<div class="ecg-hero">'
+        '<div class="ecg-badge">'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M12 20s-7-4.35-9.5-8.5C.9 8.1 2.3 4.8 5.6 4.1c2-.4 3.9.6 4.9 2.2 1-1.6 2.9-2.6 4.9-2.2 3.3.7 4.7 4 3.1 7.4C19 15.65 12 20 12 20z"/>'
+        '</svg>'
+        'AI-Powered Cardiac Intelligence'
+        '</div>'
+        '<div class="ecg-wordmark">CardioSage</div>'
+        '<p class="ecg-tagline">AI-Powered ECG Analysis & Clinical Reporting</p>'
+        '<div class="ecg-divider"></div>'
         '<div class="ecg-features">'
         f'<div class="ecg-feature-card">{_ICON_PULSE_CIRCLE}<h3>AI-Powered Diagnosis</h3>'
-        '<p>HuBERT-ECG + BART deep learning models analyze all 12 leads and classify five '
-        'diagnostic superclasses in seconds.</p></div>'
-        f'<div class="ecg-feature-card">{_ICON_SALIENCY}<h3>Explainable Saliency Mapping</h3>'
-        '<p>See exactly which regions of the signal drove the diagnosis — built for '
-        'clinical trust, not a black box.</p></div>'
-        f'<div class="ecg-feature-card">{_ICON_REPORT}<h3>Clinical-Grade PDF Reports</h3>'
-        '<p>Export a hospital-style diagnostic report with patient data, findings, and a '
-        'physician sign-off line.</p></div>'
+        '<p>HuBERT-ECG encodes all 12 leads into rich cardiac features, classified across five clinical superclasses with confidence scores.</p></div>'
+        f'<div class="ecg-feature-card">{_ICON_SALIENCY}<h3>Explainable Saliency Maps</h3>'
+        '<p>Gradient-based attribution highlights exactly which signal regions drove each prediction, designed for clinical trust and transparency.</p></div>'
+        f'<div class="ecg-feature-card">{_ICON_REPORT}<h3>Clinical PDF Reports</h3>'
+        '<p>Generate a structured, hospital-style diagnostic report with waveforms, findings, confidence data, and a physician sign-off block.</p></div>'
+        '</div>'
         '</div>'
     )
 
     if not _models_trained:
-        gr.Markdown("⚠️ **Model not trained — predictions are random.**")
+        gr.Markdown("**Model not trained - predictions are random.**")
 
-    with gr.Tab("Test-set record"):
+    with gr.Tab("Test-set Record"):
         with gr.Row():
-            dropdown = gr.Dropdown(choices=_record_choices, label="Select a test-set ECG (record ID)",
+            dropdown = gr.Dropdown(choices=_record_choices, label="Select a PTB-XL test-set record (Record ID)",
                                     value=_record_choices[0] if _record_choices else None, scale=4)
-            run_btn = gr.Button("Analyze", variant="primary", scale=1)
+            run_btn = gr.Button("Run Analysis", variant="primary", scale=1)
 
-        gr.HTML(_eyebrow(_ICON_SALIENCY, "ECG Signal & AI Saliency Map"))
+        gr.HTML(_eyebrow(_ICON_SALIENCY, "12-Lead Signal & Saliency Map"))
         with gr.Group():
             with gr.Row():
-                plot_out = gr.Plot(label="12-lead signal", scale=3)
+                plot_out = gr.Plot(label="12-Lead ECG with saliency overlay", scale=3)
                 with gr.Column(scale=2):
-                    label_out = gr.Markdown(label="Diagnosis")
-                    conf_out = gr.Label(label="Confidence (all classes)", num_top_classes=5)
+                    label_out = gr.Markdown(label="Primary Diagnosis")
+                    conf_out = gr.Label(label="Confidence by class", num_top_classes=5)
 
-        gr.HTML(_eyebrow(_ICON_REPORT, "Clinical Report"))
+        gr.HTML(_eyebrow(_ICON_REPORT, "AI-Generated Clinical Report"))
         with gr.Group():
-            gen_report_out = gr.Textbox(label="AI-Generated Report", lines=6, interactive=False)
+            gen_report_out = gr.Textbox(label="Clinical Report", lines=6, interactive=False)
 
         gr.HTML(_eyebrow(_ICON_REPORT, "Clinical PDF Report"))
         with gr.Group():
-            preview_btn = gr.Button("📄 Preview PDF", variant="primary")
+            preview_btn = gr.Button("Preview PDF", variant="primary")
             with gr.Column(elem_classes=["ecg-pdf-drawer"]) as pdf_drawer:
                 with gr.Row(equal_height=True, elem_classes=["ecg-pdf-bar"]):
-                    gr.Markdown("📄 **Diagnostic PDF Report** — Complete document with 12-lead waveforms & clinical summary.", scale=4)
+                    gr.Markdown("**Diagnostic PDF Report** - Complete document with 12-lead waveforms & clinical summary.", scale=4)
                     download_btn = gr.DownloadButton("Download PDF", variant="primary", scale=1, min_width=140, elem_classes=["ecg-pdf-download-btn"])
                 pdf_preview = gr.Image(label="PDF Report Preview", interactive=False, show_label=False)
 
@@ -615,30 +693,30 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
             outputs=[pdf_drawer, pdf_preview, download_btn, preview_btn, pdf_open_state]
         )
 
-    with gr.Tab("Upload your own"):
-        gr.Markdown("CSV with shape (n_samples, 12), one column per lead, no header row.")
+    with gr.Tab("Upload Your Own ECG"):
+        gr.Markdown("Upload a CSV file with shape (n_samples, 12) - one column per lead, no header row.")
         with gr.Row():
-            file_in = gr.File(label="Upload CSV", file_types=[".csv"], scale=3)
-            upload_btn = gr.Button("Analyze uploaded ECG", variant="primary", scale=1)
+            file_in = gr.File(label="Upload CSV (12-lead ECG)", file_types=[".csv"], scale=3)
+            upload_btn = gr.Button("Run Analysis", variant="primary", scale=1)
 
-        gr.HTML(_eyebrow(_ICON_SALIENCY, "ECG Signal & AI Saliency Map"))
+        gr.HTML(_eyebrow(_ICON_SALIENCY, "12-Lead Signal & Saliency Map"))
         with gr.Group():
             with gr.Row():
-                plot_out2 = gr.Plot(label="12-lead signal", scale=3)
+                plot_out2 = gr.Plot(label="12-Lead ECG with saliency overlay", scale=3)
                 with gr.Column(scale=2):
-                    label_out2 = gr.Markdown(label="Diagnosis")
-                    conf_out2 = gr.Label(label="Confidence (all classes)", num_top_classes=5)
+                    label_out2 = gr.Markdown(label="Primary Diagnosis")
+                    conf_out2 = gr.Label(label="Confidence by class", num_top_classes=5)
 
-        gr.HTML(_eyebrow(_ICON_REPORT, "Clinical Report"))
+        gr.HTML(_eyebrow(_ICON_REPORT, "AI-Generated Clinical Report"))
         with gr.Group():
-            gen_report_out2 = gr.Textbox(label="AI-Generated Report", lines=6, interactive=False)
+            gen_report_out2 = gr.Textbox(label="Clinical Report", lines=6, interactive=False)
 
         gr.HTML(_eyebrow(_ICON_REPORT, "Clinical PDF Report"))
         with gr.Group():
-            preview_btn2 = gr.Button("📄 Preview PDF", variant="primary")
+            preview_btn2 = gr.Button("Preview PDF", variant="primary")
             with gr.Column(elem_classes=["ecg-pdf-drawer"]) as pdf_drawer2:
                 with gr.Row(equal_height=True, elem_classes=["ecg-pdf-bar"]):
-                    gr.Markdown("📄 **Diagnostic PDF Report** — Complete document with 12-lead waveforms & clinical summary.", scale=4)
+                    gr.Markdown("**Diagnostic PDF Report** - Complete document with 12-lead waveforms & clinical summary.", scale=4)
                     download_btn2 = gr.DownloadButton("Download PDF", variant="primary", scale=1, min_width=140, elem_classes=["ecg-pdf-download-btn"])
                 pdf_preview2 = gr.Image(label="PDF Report Preview", interactive=False, show_label=False)
 
@@ -656,19 +734,19 @@ with gr.Blocks(title="Intelligent ECG Analysis Tool") as demo:
             outputs=[pdf_drawer2, pdf_preview2, download_btn2, preview_btn2, pdf_open_state2]
         )
 
-    with gr.Tab("Batch analysis"):
+    with gr.Tab("Batch Analysis"):
         gr.Markdown(
-            "Analyze several ECGs at once and get a summary table. "
-            "Pick multiple test-set records and/or upload multiple CSVs, then run."
+            "Analyze multiple ECGs in a single run and get a consolidated summary table. "
+            "Select any combination of test-set records and uploaded CSV files, then click **Run Batch Analysis**."
         )
         with gr.Row():
             batch_dropdown = gr.Dropdown(choices=_record_choices, multiselect=True,
-                                          label="Test-set records (optional)")
-            batch_files = gr.File(label="Upload CSVs (optional)", file_types=[".csv"],
+                                          label="Test-set records (Record IDs)")
+            batch_files = gr.File(label="Upload CSV files", file_types=[".csv"],
                                    file_count="multiple")
-        batch_btn = gr.Button("Run batch analysis", variant="primary")
+        batch_btn = gr.Button("Run Batch Analysis", variant="primary")
         batch_out = gr.Dataframe(headers=["Source", "Diagnosis", "Confidence", "Report"],
-                                  label="Batch results", wrap=True)
+                                  label="Batch Results", wrap=True)
 
         batch_btn.click(analyze_batch, inputs=[batch_dropdown, batch_files], outputs=batch_out)
 
