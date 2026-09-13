@@ -173,9 +173,9 @@ def _draw_page_frame(canvas, doc):
 
     canvas.setFillColor(colors.white)
     canvas.setFont("Times-Bold", 13)
-    canvas.drawString(MARGIN, PAGE_H - 0.32 * inch, "INTELLIGENT ECG ANALYSIS SYSTEM")
+    canvas.drawString(MARGIN, PAGE_H - 0.32 * inch, "CARDIOSAGE")
     canvas.setFont("Helvetica", 7.5)
-    canvas.drawString(MARGIN, PAGE_H - 0.47 * inch, "Automated 12-Lead Cardiac Interpretation")
+    canvas.drawString(MARGIN, PAGE_H - 0.47 * inch, "AI-Powered ECG Analysis & Clinical Reporting")
 
     canvas.setFont("Helvetica-Bold", 9)
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 0.32 * inch, "ECG DIAGNOSTIC REPORT")
